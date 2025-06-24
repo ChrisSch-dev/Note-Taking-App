@@ -32,50 +32,203 @@ impl eframe::App for NoteApp {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         set_theme(ctx, self.dark_mode);
 
+        // Top Panel: Search and Theme Toggle
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("🔎");
-                if ui.text_edit_singleline(&mut self.filter).changed() {
-                    self.selected = None;
-                }
-                if ui.button(if self.dark_mode {"🌙"} else {"🔆"}).clicked() {
-                    self.dark_mode = !self.dark_mode;
-                }
+            ui.horizontal_centered(|ui| {
+                ui.add_space(8.0);
+                ui.heading(
+                    egui::RichText::new("📝 Purpose Notes")
+                        .font(egui::FontId::proportional(26.0))
+                        .strong(),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Theme Toggle
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(if self.dark_mode { "🌙" } else { "🔆" })
+                                    .color(if self.dark_mode { egui::Color32::WHITE } else { egui::Color32::BLACK }),
+                            )
+                                .fill(if self.dark_mode { egui::Color32::DARK_GRAY } else { egui::Color32::LIGHT_GRAY })
+                                .rounding(egui::Rounding::same(20.0)),
+                        )
+                        .on_hover_text("Toggle theme")
+                        .clicked()
+                    {
+                        self.dark_mode = !self.dark_mode;
+                    }
+                    ui.add_space(8.0);
+                    // Search Bar
+                    let search = ui.add_sized(
+                        [200.0, 32.0],
+                        egui::TextEdit::singleline(&mut self.filter)
+                            .hint_text("Search notes..."),
+                    );
+                    if search.changed() {
+                        self.selected = None;
+                    }
+                });
+                ui.add_space(8.0);
             });
         });
 
-        egui::SidePanel::left("sidebar").min_width(220.0).show(ctx, |ui| {
-            ui.heading("Notes");
-            if ui.button("➕ New Note").clicked() {
-                self.editor_title.clear();
-                self.editor_content.clear();
-                self.is_editing = true;
-                self.selected = None;
-            }
-            ui.separator();
+        // Sidebar Panel
+        egui::SidePanel::left("sidebar")
+            .min_width(250.0)
+            .frame(
+                egui::Frame::side_top_panel(&ctx.style())
+                    .fill(if self.dark_mode {
+                        egui::Color32::from_rgb(32, 36, 42)
+                    } else {
+                        egui::Color32::from_rgb(238, 241, 245)
+                    })
+                    .inner_margin(egui::Margin::same(12.0)),
+            )
+            .show(ctx, |ui| {
+                // "Notes" and "+" button at the same Y level, spaced to ends
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new("Notes")
+                                .font(egui::FontId::proportional(30.0))
+                                .strong(),
+                        )
+                            .wrap(false),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new("＋").color(egui::Color32::WHITE),
+                                )
+                                    .fill(egui::Color32::from_rgb(60, 155, 255))
+                                    .stroke(egui::Stroke::NONE)
+                                    .rounding(egui::Rounding::same(16.0))
+                                    .min_size([32.0, 32.0].into()),
+                            )
+                            .on_hover_text("New Note")
+                            .clicked()
+                        {
+                            self.editor_title.clear();
+                            self.editor_content.clear();
+                            self.is_editing = true;
+                            self.selected = None;
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+                ui.separator();
 
-            let filter = self.filter.to_lowercase();
-            for (i, note) in self.notes.iter().enumerate() {
-                if filter.is_empty() || note.title.to_lowercase().contains(&filter) || note.content.to_lowercase().contains(&filter) {
-                    let selected = Some(i) == self.selected;
-                    if ui.selectable_label(selected, &note.title).clicked() {
-                        self.selected = Some(i);
-                        self.editor_title = note.title.clone();
-                        self.editor_content = note.content.clone();
-                        self.is_editing = false;
+                let filter = self.filter.to_lowercase();
+                let mut did_select = false;
+                let mut filtered_count = 0;
+                for (i, note) in self.notes.iter().enumerate() {
+                    if filter.is_empty()
+                        || note.title.to_lowercase().contains(&filter)
+                        || note.content.to_lowercase().contains(&filter)
+                    {
+                        filtered_count += 1;
+                        let selected = Some(i) == self.selected;
+                        let label = egui::SelectableLabel::new(
+                            selected,
+                            egui::RichText::new(&note.title).color(
+                                if selected {
+                                    egui::Color32::from_rgb(60, 155, 255)
+                                } else {
+                                    ui.visuals().text_color()
+                                },
+                            ),
+                        );
+                        let response = egui::Frame::none()
+                            .fill(if selected {
+                                egui::Color32::from_rgb(220, 240, 255).gamma_multiply(0.25)
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            })
+                            .rounding(egui::Rounding::same(8.0))
+                            .inner_margin(egui::Vec2::new(6.0, 4.0))
+                            .show(ui, |ui| ui.add(label))
+                            .inner;
+
+                        if response.clicked() && !did_select {
+                            self.selected = Some(i);
+                            self.editor_title = note.title.clone();
+                            self.editor_content = note.content.clone();
+                            self.is_editing = false;
+                            did_select = true;
+                        }
                     }
                 }
-            }
-        });
+                if self.notes.is_empty() {
+                    ui.add_space(16.0);
+                    ui.label(egui::RichText::new("No notes yet.").italics().weak());
+                } else if filtered_count == 0 {
+                    ui.add_space(16.0);
+                    ui.label(egui::RichText::new("No results.").italics().weak());
+                }
+            });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        // Main Area
+        egui::CentralPanel::default().frame(
+            egui::Frame::central_panel(&ctx.style())
+                .fill(if self.dark_mode {
+                    egui::Color32::from_rgb(40, 44, 52)
+                } else {
+                    egui::Color32::from_rgb(255, 255, 255)
+                })
+                .inner_margin(egui::Margin::same(24.0)),
+        ).show(ctx, |ui| {
+            ui.set_width(ui.available_width().min(680.0));
+
             if self.is_editing {
-                ui.heading("Note Editor");
-                ui.text_edit_singleline(&mut self.editor_title);
-                ui.add(egui::TextEdit::multiline(&mut self.editor_content).desired_rows(20));
+                ui.add_space(8.0);
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                    ui.heading(
+                        egui::RichText::new(
+                            if self.selected.is_some() { "Edit Note" } else { "New Note" }
+                        )
+                            .font(egui::FontId::proportional(34.0))
+                            .strong(),
+                    );
+                });
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new("Title")
+                        .font(egui::FontId::proportional(22.0))
+                        .strong(),
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.editor_title)
+                        .hint_text("Enter note title...")
+                        .font(egui::FontId::proportional(19.0)),
+                );
+                ui.add_space(14.0);
+                ui.label(
+                    egui::RichText::new("Content")
+                        .font(egui::FontId::proportional(22.0))
+                        .strong(),
+                );
+                let available_height = ui.available_height() - 80.0;
+                ui.add_sized(
+                    [ui.available_width(), available_height.max(200.0)],
+                    egui::TextEdit::multiline(&mut self.editor_content)
+                        .hint_text("Type your note here...")
+                        .font(egui::FontId::proportional(17.0)),
+                );
+                ui.add_space(16.0);
                 ui.horizontal(|ui| {
-                    if ui.button("💾 Save").clicked() {
-                        if !self.editor_title.is_empty() {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("💾 Save").color(egui::Color32::WHITE),
+                            )
+                                .fill(egui::Color32::from_rgb(60, 155, 255))
+                                .rounding(egui::Rounding::same(12.0))
+                                .min_size([80.0, 36.0].into()),
+                        )
+                        .clicked()
+                    {
+                        if !self.editor_title.trim().is_empty() {
                             match self.selected {
                                 Some(idx) => {
                                     let note = &mut self.notes[idx];
@@ -97,45 +250,99 @@ impl eframe::App for NoteApp {
                             self.is_editing = false;
                         }
                     }
-                    if ui.button("❌ Cancel").clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("❌ Cancel"),
+                            )
+                                .rounding(egui::Rounding::same(12.0))
+                                .min_size([80.0, 36.0].into()),
+                        )
+                        .clicked()
+                    {
                         self.is_editing = false;
                     }
                 });
             } else if let Some(idx) = self.selected {
-                // Clone note to avoid borrow checker issues
                 let note = self.notes[idx].clone();
-                ui.heading(&note.title);
-                ui.label(format!(
-                    "Created: {} | Edited: {}",
-                    fmt_ts(note.created),
-                    fmt_ts(note.edited)
-                ));
+                ui.add_space(8.0);
+                ui.heading(
+                    egui::RichText::new(&note.title)
+                        .font(egui::FontId::proportional(24.0))
+                        .strong(),
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Created: {}   |   Edited: {}",
+                        fmt_ts(note.created),
+                        fmt_ts(note.edited)
+                    ))
+                        .size(13.0)
+                        .italics()
+                        .weak(),
+                );
                 ui.separator();
-                ui.label(&note.content);
-                ui.separator();
-                // Use indices for edit/delete to avoid borrow issues
-                let selected = self.selected;
+                ui.add_space(12.0);
+                ui.label(
+                    egui::RichText::new(&note.content)
+                        .font(egui::FontId::proportional(17.0)),
+                );
+                ui.add_space(24.0);
                 ui.horizontal(|ui| {
-                    if ui.button("✏️ Edit").clicked() {
-                        if let Some(idx) = selected {
-                            self.is_editing = true;
-                            self.editor_title = self.notes[idx].title.clone();
-                            self.editor_content = self.notes[idx].content.clone();
-                        }
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("✏️ Edit"),
+                            )
+                                .rounding(egui::Rounding::same(12.0))
+                                .min_size([70.0, 36.0].into()),
+                        )
+                        .on_hover_text("Edit this note")
+                        .clicked()
+                    {
+                        self.is_editing = true;
+                        self.editor_title = note.title.clone();
+                        self.editor_content = note.content.clone();
                     }
-                    if ui.button("🗑️ Delete").clicked() {
-                        if let Some(idx) = selected {
-                            self.notes.remove(idx);
-                            Storage::save_notes(&self.notes);
-                            self.selected = None;
-                            self.is_editing = false;
-                        }
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("🗑️ Delete").color(egui::Color32::WHITE),
+                            )
+                                .fill(egui::Color32::from_rgb(255, 80, 80))
+                                .rounding(egui::Rounding::same(12.0))
+                                .min_size([80.0, 36.0].into()),
+                        )
+                        .on_hover_text("Delete this note")
+                        .clicked()
+                    {
+                        self.notes.remove(idx);
+                        Storage::save_notes(&self.notes);
+                        self.selected = None;
+                        self.is_editing = false;
                     }
                 });
+            } else if self.notes.is_empty() {
+                ui.add_space(64.0);
+                ui.label(
+                    egui::RichText::new("📝 Welcome to Purpose Notes!")
+                        .size(24.0)
+                        .strong(),
+                );
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new("Click the ＋ button or 'New Note' to get started.")
+                        .size(16.0)
+                        .weak(),
+                );
             } else {
-                ui.centered_and_justified(|ui| {
-                    ui.label("Select a note or create a new one.");
-                });
+                ui.add_space(64.0);
+                ui.label(
+                    egui::RichText::new("Select a note or create a new one.")
+                        .size(18.0)
+                        .weak(),
+                );
             }
         });
     }
