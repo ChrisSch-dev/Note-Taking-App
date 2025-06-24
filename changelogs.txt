@@ -1,0 +1,3 @@
+Version 1.5 Changelogs
+
+- Added ability to Create/Delete/Edit Notes

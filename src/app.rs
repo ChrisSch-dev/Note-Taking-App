@@ -2,6 +2,7 @@ use eframe::egui;
 use crate::note::Note;
 use crate::storage::Storage;
 use crate::theme::set_theme;
+use std::fs;
 
 pub struct NoteApp {
     pub notes: Vec<Note>,
@@ -11,11 +12,13 @@ pub struct NoteApp {
     pub editor_content: String,
     pub is_editing: bool,
     pub dark_mode: bool,
+    pub changelogs: Option<String>,
 }
 
 impl Default for NoteApp {
     fn default() -> Self {
         let notes = Storage::load_notes();
+        let changelogs = fs::read_to_string("changelogs.txt").ok();
         Self {
             notes,
             filter: String::new(),
@@ -24,6 +27,7 @@ impl Default for NoteApp {
             editor_content: String::new(),
             is_editing: false,
             dark_mode: true,
+            changelogs,
         }
     }
 }
@@ -35,6 +39,25 @@ impl eframe::App for NoteApp {
         // Top Panel: Search and Theme Toggle
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
+                // "Home" button, always visible on the top left
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new("🏠 Home")
+                                .font(egui::FontId::proportional(18.0))
+                                .strong(),
+                        )
+                            .min_size([70.0, 32.0].into()),
+                    )
+                    .on_hover_text("Return to Home Page")
+                    .clicked()
+                {
+                    self.selected = None;
+                    self.is_editing = false;
+                    self.editor_title.clear();
+                    self.editor_content.clear();
+                }
+
                 ui.add_space(8.0);
                 ui.heading(
                     egui::RichText::new("📝 Purpose Notes")
@@ -57,16 +80,6 @@ impl eframe::App for NoteApp {
                     {
                         self.dark_mode = !self.dark_mode;
                     }
-                    ui.add_space(8.0);
-                    // Search Bar
-                    let search = ui.add_sized(
-                        [200.0, 32.0],
-                        egui::TextEdit::singleline(&mut self.filter)
-                            .hint_text("Search notes..."),
-                    );
-                    if search.changed() {
-                        self.selected = None;
-                    }
                 });
                 ui.add_space(8.0);
             });
@@ -85,7 +98,7 @@ impl eframe::App for NoteApp {
                     .inner_margin(egui::Margin::same(12.0)),
             )
             .show(ctx, |ui| {
-                // "Notes" and "+" button at the same Y level, spaced to ends
+                // "Notes" and "+" button at the top
                 ui.horizontal(|ui| {
                     ui.add(
                         egui::Label::new(
@@ -119,6 +132,19 @@ impl eframe::App for NoteApp {
                 ui.add_space(8.0);
                 ui.separator();
 
+                // Search Bar BELOW "Notes" and the divider, but ABOVE all notes
+                ui.add_space(8.0);
+                let search_changed = ui.add_sized(
+                    [ui.available_width() - 8.0, 32.0],
+                    egui::TextEdit::singleline(&mut self.filter)
+                        .hint_text("Search notes..."),
+                ).changed();
+                if search_changed {
+                    self.selected = None;
+                }
+                ui.add_space(8.0);
+
+                // Notes List
                 let filter = self.filter.to_lowercase();
                 let mut did_select = false;
                 let mut filtered_count = 0;
@@ -168,7 +194,6 @@ impl eframe::App for NoteApp {
                 }
             });
 
-        // Main Area
         egui::CentralPanel::default().frame(
             egui::Frame::central_panel(&ctx.style())
                 .fill(if self.dark_mode {
@@ -323,26 +348,84 @@ impl eframe::App for NoteApp {
                         self.is_editing = false;
                     }
                 });
-            } else if self.notes.is_empty() {
-                ui.add_space(64.0);
-                ui.label(
+            } else {
+                // Home Page: Welcome, Instructions, and Changelogs
+                ui.add_space(32.0);
+                ui.heading(
                     egui::RichText::new("📝 Welcome to Purpose Notes!")
-                        .size(24.0)
+                        .size(28.0)
                         .strong(),
                 );
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new("Click the ＋ button or 'New Note' to get started.")
-                        .size(16.0)
-                        .weak(),
-                );
-            } else {
-                ui.add_space(64.0);
-                ui.label(
-                    egui::RichText::new("Select a note or create a new one.")
-                        .size(18.0)
-                        .weak(),
-                );
+                ui.add_space(10.0);
+
+                // Instructions Section (BOLD)
+                ui.group(|ui| {
+                    ui.heading(
+                        egui::RichText::new("Instructions")
+                            .size(22.0)
+                            .strong(),
+                    );
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(
+                            r#"• To create a note, click the ＋ button on the left sidebar or 'New Note' at the top.
+• Click a note in the sidebar to view it.
+• Use the ✏️ Edit and 🗑️ Delete buttons to modify or remove notes.
+• Search notes by typing in the search bar at the top.
+• Switch between dark and light mode with the icon at the top right.
+• Click the 🏠 Home button any time to return to this page.
+"#,
+                        )
+                            .size(16.0),
+                    );
+                });
+
+                ui.add_space(18.0);
+
+                // Changelogs Section - fixed size, expands entire screen width, and scrollable
+                let changelogs = self.changelogs.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
+
+                let available_height = ui.available_height().max(260.0);
+                let available_width = ui.available_width();
+
+                ui.group(|ui| {
+                    ui.set_width(available_width);
+                    ui.set_height(available_height);
+                    // Changelogs Heading (BOLD)
+                    ui.heading(
+                        egui::RichText::new("Changelogs")
+                            .size(22.0)
+                            .strong(),
+                    );
+                    ui.add_space(6.0);
+
+                    egui::ScrollArea::vertical()
+                        .max_height(available_height - 40.0)
+                        .show(ui, |ui| {
+                            if let Some(changelogs) = changelogs {
+                                ui.label(
+                                    egui::RichText::new(changelogs)
+                                        .size(15.0)
+                                );
+                            } else {
+                                ui.add_space(8.0);
+                                ui.group(|ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.set_height((available_height - 40.0).max(80.0));
+                                    ui.centered_and_justified(|ui|{
+                                        ui.label(
+                                            egui::RichText::new("No ChangeLogs available")
+                                                .size(16.0)
+                                                .italics()
+                                                .color(egui::Color32::DARK_GRAY)
+                                        );
+                                    });
+                                });
+                            }
+                        });
+                });
+
+                ui.add_space(10.0);
             }
         });
     }
