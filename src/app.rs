@@ -1,4 +1,4 @@
-use eframe::{egui, epi};
+use eframe::egui;
 use crate::note::Note;
 use crate::storage::Storage;
 use crate::theme::set_theme;
@@ -28,21 +28,8 @@ impl Default for NoteApp {
     }
 }
 
-impl epi::App for NoteApp {
-    fn name(&self) -> &str {
-        "Advanced Note Taking App"
-    }
-
-    fn setup(
-        &mut self,
-        ctx: &egui::Context,
-        _frame: &epi::Frame,
-        _storage: Option<&dyn epi::Storage>,
-    ) {
-        set_theme(ctx, self.dark_mode);
-    }
-
-    fn update(&mut self, ctx: &egui::Context, _frame: &epi::Frame) {
+impl eframe::App for NoteApp {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         set_theme(ctx, self.dark_mode);
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -115,7 +102,8 @@ impl epi::App for NoteApp {
                     }
                 });
             } else if let Some(idx) = self.selected {
-                let note = &self.notes[idx];
+                // Clone note to avoid borrow checker issues
+                let note = self.notes[idx].clone();
                 ui.heading(&note.title);
                 ui.label(format!(
                     "Created: {} | Edited: {}",
@@ -125,17 +113,23 @@ impl epi::App for NoteApp {
                 ui.separator();
                 ui.label(&note.content);
                 ui.separator();
+                // Use indices for edit/delete to avoid borrow issues
+                let selected = self.selected;
                 ui.horizontal(|ui| {
                     if ui.button("✏️ Edit").clicked() {
-                        self.is_editing = true;
-                        self.editor_title = note.title.clone();
-                        self.editor_content = note.content.clone();
+                        if let Some(idx) = selected {
+                            self.is_editing = true;
+                            self.editor_title = self.notes[idx].title.clone();
+                            self.editor_content = self.notes[idx].content.clone();
+                        }
                     }
                     if ui.button("🗑️ Delete").clicked() {
-                        self.notes.remove(idx);
-                        Storage::save_notes(&self.notes);
-                        self.selected = None;
-                        self.is_editing = false;
+                        if let Some(idx) = selected {
+                            self.notes.remove(idx);
+                            Storage::save_notes(&self.notes);
+                            self.selected = None;
+                            self.is_editing = false;
+                        }
                     }
                 });
             } else {

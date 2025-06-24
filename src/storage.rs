@@ -1,9 +1,8 @@
 use crate::note::Note;
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter};
 use std::path::Path;
 
-/// The file where notes are persisted.
 const NOTES_FILE: &str = "notes.json";
 
 pub struct Storage;
@@ -13,7 +12,6 @@ impl Storage {
     pub fn load_notes() -> Vec<Note> {
         let path = Path::new(NOTES_FILE);
         if !path.exists() {
-            // No file yet: return empty notes.
             return Vec::new();
         }
         let file = match File::open(path) {
